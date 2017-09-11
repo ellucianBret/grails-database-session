@@ -1,4 +1,6 @@
 import grails.plugin.databasesession.SessionProxyFilter
+import grails.plugin.springsecurity.SpringSecurityUtils
+import grails.plugin.springsecurity.SecurityFilterPosition
 import grails.util.Environment
 import grails.util.Metadata
 
@@ -16,11 +18,6 @@ class DatabaseSessionGrailsPlugin {
 	String license = 'APACHE'
 	def issueManagement = [system: 'JIRA', url: 'http://jira.grails.org/browse/GPDATABASESESSION']
 	def scm = [url: 'https://github.com/burtbeckwith/grails-database-session']
-
-	def getWebXmlFilterOrder() {
-		// make sure the filter is first
-		[sessionProxyFilter: -100]
-	}
 
 	def doWithWebDescriptor = { xml ->
 		if (!isEnabled(application.config)) {
@@ -63,6 +60,8 @@ class DatabaseSessionGrailsPlugin {
 		sessionProxyFilter(SessionProxyFilter) {
 			persister = ref('gormPersisterService')
 		}
+
+    SpringSecurityUtils.registerFilter 'sessionProxyFilter', SecurityFilterPosition.CONCURRENT_SESSION_FILTER.order
 	}
 
 	private boolean isEnabled(config) {
