@@ -7,6 +7,8 @@ import org.springframework.util.Assert
  * @author Burt Beckwith
  */
 class PersistentSessionService {
+    def grailsApplication
+
 
 	def deserializeAttributeValue(byte[] serialized) {
 		if (!serialized) {
@@ -135,5 +137,34 @@ class PersistentSessionService {
 		PersistentSession.executeQuery(
 			'select s.invalidated from PersistentSession s where s.id=:id',
 			[id: sessionId])[0]
+	}
+
+	Boolean cleanChunkOfExpiredSessions(maxAgeMinutes) {
+		long expiredTime = System.currentTimeMillis() - maxAgeMinutes * 1000 * 60
+
+		def maxSessionCleanSize = grailsApplication.config.grails.plugin.databasesession.cleanup.maxSessionCleanSize ?: 1000
+		// remove at most X sessions at a time that are beyond the expiredTime of lastAccess to limit the transaction size
+        def sessionIds = PersistentSession.executeQuery(
+            'select s.id from PersistentSession s where s.lastAccessedTime < :age',
+            [age: expiredTime], [max: maxSessionCleanSize])
+        if (sessionIds.size > 0) {
+            if (log.isDebugEnabled()) {
+                log.debug "using max age $maxAgeMinutes, found old sessions to remove count: $sessionIds.size"
+            }
+            def attributeIds = PersistentSessionAttribute.executeQuery(
+                    'select a.id from PersistentSessionAttribute a where  a.session.id in (:sessionIds)',
+                    [sessionIds: sessionIds])
+            PersistentSessionAttributeValue.executeUpdate(
+                    'delete from PersistentSessionAttributeValue v where v.attribute.id in (:attributeIds)',
+                    [attributeIds: attributeIds])
+            PersistentSessionAttribute.executeUpdate(
+                    'delete from PersistentSessionAttribute a where a.id in (:attributeIds)',
+                    [attributeIds: attributeIds])
+            PersistentSession.executeUpdate(
+                    'delete from PersistentSession s where s.id in (:sessionIds)',
+                    [sessionIds: sessionIds])
+        }
+
+		return sessionIds.size == maxSessionCleanSize
 	}
 }
